@@ -218,6 +218,7 @@ rescale_p <- function(p){
 # Compute clustered standard errors
 # fit is a fitted model (via lm)
 # cluster_var is a vector containing the categorical variable used for clustering
+# function follows example code in Hansen ("Econometrics", 2022, Section 4.21)
 compute_cluster_VCV <- function(fit, cluster_var){
   # Get data and dimensions
   X <- model.matrix(fit)
