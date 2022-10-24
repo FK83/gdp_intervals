@@ -1,4 +1,4 @@
-This repository contains replication files for the working paper "Prediction intervals for economic fixed-event forecasts" (Krüger and Plett, 2022). It contains the following files:
+This repository contains replication files for the working paper "Prediction intervals for economic fixed-event forecasts" (Krüger and Plett, 2022):
 
 - "quantile_procs.R" collects several R functions that are used in the project.
 
