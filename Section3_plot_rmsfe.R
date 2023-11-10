@@ -5,6 +5,9 @@ setwd("[Enter main path]")
 # set random seed
 set.seed(2023)
 
+# load empirical RMSEs for Germany
+rmse_gdp <- read.csv("data/rmse_gdp_de.csv")
+
 # load functions
 source("gdp_procs23.R")
 
@@ -23,6 +26,8 @@ plot(model1$rmse, ylim = c(0, max(c(model1$rmse, rmse_gdp$rmse))),
      pch = 20, 
      cex.axis = 1.6, cex.lab = 1.6, cex = 2)
 abline(v = 52, lty = 2)
+points(rmse_gdp$h, rmse_gdp$rmse, col = "green4", 
+       cex = 2, pch = 20)
 dev.off()
 
 # additional configurations (Figure 4)
