@@ -7,22 +7,17 @@ library(dplyr)
 library(tidyr)
 library(colorspace)
 library(ggplot2)
-library(isodistrreg)
-
-# load functions
 source("gdp_procs23.R")
-
-# load Alexander Henzi's code for estimation under convex order constraint
+library(isodistrreg)
+# use Alexander Henzi's code for estimation under convex order constraint
 source("estimation.R")
 
-flnm <- "inf_us" # either "inf_us", "gdp_us" or "gdp_de"
+flnm <- "inf_us"
 dat <- read.csv(paste0("data/", flnm, ".csv")) %>% na.omit
 yrs <- dat %>% pull(target_year) %>% unique %>% sort
 
-# initialize empty data frame
 res_all <- data.frame()
 
-# loop over years (cross-validation)
 for (yy in yrs){
   # test sample
   test <- dat %>% filter(target_year == yy)
@@ -35,7 +30,7 @@ for (yy in yrs){
            pred2_l = NA, pred2_u = NA, score2 = NA, cov2 = NA, 
            pred3_l = NA, pred3_u = NA, score3 = NA, cov3 = NA,
            pred4_l = NA, pred4_u = NA, score4 = NA, cov4 = NA)
-  # Decomposition method
+  # decomposition method
   fit1 <- isodistrreg_pp(y_training = train$e, 
                          h_training = train$h, simple = TRUE, 
                          h_test = test$h, tau_idr = c(.1, .9))
@@ -46,7 +41,7 @@ for (yy in yrs){
   res_tmp$cov1 <- (test$e >= fit1$pred[,1]) & 
     (test$e <= fit1$pred[,2])
 
-  # Flexible method
+  # flexible method
   fit2 <- iso_icv_icx(y = train$e, X = data.frame(x = train$h), 
                       concave = FALSE)
   aux2 <- predict(fit2, data = data.frame(x = test$h))
@@ -67,7 +62,7 @@ for (yy in yrs){
   res_tmp$cov3 <- (test$e >= fit3$pred[,1]) & 
     (test$e <= fit3$pred[,2])
   
-  # Quantile combination
+  # quantile combination
   pred_ens <- (fit1$pred[,1:2] + pred2 + fit3$pred[,1:2])/3
   res_tmp[, c("pred4_l", "pred4_u")] <- pred_ens
   res_tmp$score4 <- ints(y = test$e, 
@@ -80,7 +75,7 @@ for (yy in yrs){
   res_all <- rbind(res_all, res_tmp)
 }
 
-# Compute evaluation statistics
+# compute evaluation statistics
 qs <- colMeans(res_all[, paste0("score", 1:4)], na.rm = TRUE)
 qs_print <- print_helper(qs)
 covg_print <- print_helper(100*
@@ -98,14 +93,14 @@ len_print <- res_all %>% transmute(len1 = pred1_u - pred1_l,
 meth_ind <- c(3, 1, 2, 4) # indexes of methods (as presented in table)
 # names of models 1-4
 meth_names <- c("Decomposition", "Flexible", "Gaussian", "Combination") 
-# Make tex output for table
+# make tex output for Table 3 in paper
 paste(meth_names[meth_ind], "&", 
       paste0(covg_print[meth_ind], "\\%"), "&", 
       len_print[meth_ind], "&", 
       qs_print[meth_ind], "\\\\") %>%
   writeLines
 
-# plot coverage against horizon
+# plot coverage against horizon (Figure S2 in online supplement)
 for (mm in 1:4){
   fit <- loess(formula(paste0("cov", mm, "~ h")), data = res_all, 
                degree = 1)
@@ -123,45 +118,44 @@ for (mm in 1:4){
 }
 
 # illustration plot (model excluding 2020)
-meth_sel <- 3:4
+# (Figure 5 in paper)
+meth_sel <- 3:4 # choose methods for quantile predictions shown in plot
 lab_sel <- meth_names[meth_sel]
+pch_2020 <- 17 # symbol type for 2020 and other years
+pch_other <- 20
+col_2020 <- "black" # color for 2020 and other years
+col_other <- grey(.6, .6)
 plot_df <- res_all %>% select(target_year, e, h, 
                               contains(c(paste0("pred", meth_sel[1]),
                                          paste0("pred", meth_sel[2])))) %>%
-  pivot_longer(cols = contains("pred")) %>%
-  mutate(target_year = if_else(target_year == 2020, "2020", "other"))
-plot_df_2 <- plot_df %>% filter(target_year == "2020") 
-cl <- c("blue4", "brown4")
-ggplot(filter(plot_df, target_year != "2020"), 
-       aes(x = h, y = e)) + 
-  geom_point(col = grey(.1, .1), size = I(3)) + 
-  theme_minimal(base_size = 20) + 
-  geom_line(data = plot_df_2, mapping = aes(x = h, y = value, 
-                                            color = name, linetype = name), 
-            lwd = I(1.5)) +
-  geom_point(plot_df_2, mapping = aes(x = h, y = e), 
-             color = "green4", size = I(6), pch = 20) +
-  theme(legend.position = "top") + xlab("Horizon") + 
-  scale_color_manual(name = "", 
-                     breaks = c(paste0("pred", meth_sel[1], c("_l", "_u")), 
-                                paste0("pred", meth_sel[2], c("_l", "_u"))),
-                     values = rep(cl, each = 2)) + 
-  scale_linetype_manual(name = "", 
-                        breaks = c(paste0("pred", meth_sel[1], c("_l", "_u")), 
-                                   paste0("pred", meth_sel[2], c("_l", "_u"))),
-                        values = rep(1:2, each = 2)) + 
-  guides(color = "none", linetype = "none")
-ggsave(filename = paste0("plots/2020errors_", flnm, ".pdf"), 
-       height = 6, width = 16)
-
-# print legend as separate file
-pdf("plots/2020errors_legend.pdf", height = 4, width = 16)
-plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
-legend("top", c("2020", lab_sel[1], "other years", lab_sel[2]), 
-       lty = c(NA, 1, NA, 2), lwd = c(NA, 7, NA, 7), 
-       pch = c(16, NA, 16, NA), bty = "n", cex = 4, pt.cex = c(7, NA, 7, NA),
-       col = c("green4", cl[1], "grey", cl[2]), ncol = 2)
+  mutate(target_year_2020 = (target_year == 2020), 
+         aux_pch = if_else(target_year_2020, pch_2020, pch_other), 
+         aux_col = if_else(target_year_2020, col_2020, col_other))
+# Print plot
+pdf(paste0("plots/2020errors_", flnm, ".pdf"), 
+    height = 6, width = 16)
+par(mar=c(5,5,4,1)+.1)
+plot(plot_df$h, plot_df$e, pch = plot_df$aux_pch, bty = "n", 
+     col = plot_df$aux_col, xlab = "Horizon (weeks)", 
+     ylab = "Forecast Error", cex.lab = 1.6, cex.axis = 1.6, cex = 1.6, 
+     ylim = c(-7, 7), xlim = c(0, 104))
+plot_df_2 <- plot_df %>% filter(target_year_2020) %>% arrange(h)
+matplot(plot_df_2$h, plot_df_2[,grepl("pred", names(plot_df))], add = TRUE, 
+        col = 1, type = "l", lty = c(1, 1, 2, 2), lwd = 3)
 dev.off()
 
-# write evaluation results to csv file
-write.csv(res_all, paste0(flnm, "_eval.csv"), row.names = FALSE)
+# construct legend as separate plot
+# see https://stackoverflow.com/questions/48966645/how-can-i-create-a-legend-without-a-plot-in-r
+pdf(paste0("plots/2020errors_legend.pdf"), 
+    height = 6, width = 16)
+plot(NULL, xaxt = "n", yaxt = "n", bty = "n", ylab = "", xlab = "", 
+     ylim = c(0, 1), xlim = c(0, 1))
+legend("center", c("2020", lab_sel[1], "other years", lab_sel[2]), 
+       lty = c(NA, 1, NA, 2), col = c(col_2020, 1, col_other, 1), 
+       lwd = c(NA, 3, NA, 3), ncol = 2, bty = "n", 
+       pch = c(pch_2020, NA, pch_other, NA), 
+       cex = 4)
+dev.off()
+
+# save results as csv file
+write.csv(res_all, paste0("data/", flnm, "_eval.csv"), row.names = FALSE)

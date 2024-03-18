@@ -7,7 +7,7 @@ library(tidyr)
 library(colorspace)
 library(ggplot2)
 library(murphydiagram)
-library(forecastcalibration) # available from https://github.com/FK83/forecastcalibration
+library(forecastcalibration)
 
 source("gdp_procs23.R")
 
@@ -31,10 +31,8 @@ dat1 <- read.csv(paste0("data/", var, "_us_eval.csv")) %>%
   select(target_year, h, forecast, rlz, contains(model_nr))
 # Remove model nr from variable names (easier to access below)
 names(dat1) <- gsub(model_nr, "", names(dat1))
-# dat2 contains probability distributions fitted to the average SPF histogram
 dat2 <- read.csv(paste0("data/histograms_", var, ".csv")) %>%
   transmute(target_year, h, hist1_lower = hist_lower, hist1_upper = hist_upper)
-# dat3 contains probability distributions fitted to individual-level SPF histograms
 dat3 <- read.csv(paste0("data/individual_histograms_", var, ".csv")) %>%
   na.omit %>%
   group_by(target_year, h) %>% 
@@ -61,10 +59,7 @@ dat <- merge(dat1, merge(dat2, dat3)) %>% na.omit %>%
          hist3_cov = cov_ind(y = rlz, x_lower = hist3_lower, 
                              x_upper = hist3_upper))
 
-# The following results (coverage, correlation, scores, PI length) refer to four forecasts: 
-# Postprocessing and three histogram versions
-
-# coverage rates 
+# coverage rates of both forecasts
 round(100*colMeans(dat[,c("cov", paste0("hist", 1:3, "_cov"))]))
 
 # correlation
@@ -106,20 +101,19 @@ paste(c("SPF Histogram", "SPF Histogram (quantile mean)",
   writeLines
 
 # plot length of prediction interval against forecast horizon
+# (Figure 4 in paper)
 hist_sel <- "hist1"
 len_name <- paste0(hist_sel,"_length")
-dat[, c("target_year", "h", len_name, "pred_length")] %>%
-  pivot_longer(all_of(c(len_name, "pred_length"))) %>% 
-  ggplot(aes(x = h, y = value, color = name)) + 
-  geom_point(size = I(1.1), alpha = .3) + 
-  theme_minimal(base_size = 10) + xlab("Horizon") + 
-  ylab("PI Length") + 
-  theme(legend.position = "top") + 
-  scale_color_discrete_qualitative(name = "", palette = "Dark 3", 
-                                   breaks = c(len_name, "pred_length"), 
-                                   labels = c("SPF Histogram", lb)) 
-# save plot as pdf file
-ggsave(paste0("plots/", hist_sel, "_dots_", var, ".pdf"))
+dat_plot <- dat[, c("target_year", "h", len_name, "pred_length")]
+pdf(paste0("plots/", hist_sel, "_dots_", var, ".pdf"))
+par(mar=c(5,5,4,1)+.1)
+plot(dat_plot$h, dat_plot$hist1_length, bty = "n", xlab = "Horizon (weeks)", 
+     ylab = "PI Length", col = grey(.55, .55), pch = 20, ylim = c(0, 16), 
+     cex.lab = 1.6, cex.axis = 1.6, cex = 1.6)
+legend("topleft", c("Combination", "SPF Histogram"), pch = c(2, 20), 
+       bty = "n", cex = 1.6, col = c(1, grey(.55, .55)))
+points(dat_plot$h, dat_plot$pred_length, pch = 2, cex = 1.6)
+dev.off()
 
 # separate DM tests for each horizon
 hs <- dat$h %>% unique %>% sort
@@ -135,20 +129,16 @@ for (hh in hs){
   df_dm$t[ind] <- t_test$t
   df_dm$p[ind] <- t_test$pval
 }
-
-# compute Bonferroni correction
 df_dm$p_adj <- p.adjust(df_dm$p, method = "bonferroni")
-
-# save plot
+# Plot for Figure 3 in paper
 pdf(paste0("plots/pvals_", var, "_", hist_sel, ".pdf"))
-plot(df_dm$h, df_dm$p, pch = 20, xlab = "Horizon (weeks)", ylab = "P-value", 
+plot(df_dm$h, df_dm$p, pch = 3, xlab = "Horizon (weeks)", ylab = "P-value", 
      bty = "n", ylim = c(0, 1), xlim = c(0, 104), 
-     cex.lab = 1.4, cex.axis = 1.4, cex = 2.5)
-points(df_dm$h, df_dm$p_adj, pch = 20, col = 3, cex = 2.5)
+     cex.lab = 1.4, cex.axis = 1.4, cex = 2)
+points(df_dm$h, df_dm$p_adj, pch = 2, col = 1, cex = 2)
 abline(h = .05, lty = 2)
-legend("topleft", c("Raw", "Adj. (Bonferroni)"), col = c(1, 3), 
-       bty = "n", pch = 20, cex = 1.4)
+legend("topleft", c("Raw", "Adj. (Bonferroni)"), col = c(1, 1), 
+       bty = "n", pch = c(3, 2), cex = 1.5)
 dev.off()
-
-# Print indexes of score differences that are in favor of postprocessing method
+# print indexes of score differences that are in favor of postprocessing method
 which(df_dm$t < 0)
